@@ -1,15 +1,14 @@
-const express = require('express');
 const mysql = require('mysql');
-const { platform } = require('os');
 const fs = require('fs').promises;
 const path = require('path');
 
+// ---- Utility Functions ----
 async function readJSON(filePath) {
   try {
     const data = await fs.readFile(filePath, 'utf8');
     return JSON.parse(data);
   } catch (err) {
-    console.error('Error reading the JSON file:', err);
+    console.error('Error reading JSON file:', err);
   }
 }
 
@@ -17,7 +16,7 @@ async function writeJSON(filePath, data) {
   try {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
   } catch (err) {
-    console.error('Error writing the JSON file:', err);
+    console.error('Error writing JSON file:', err);
   }
 }
 
@@ -37,21 +36,19 @@ function addDaysToDate(dateString, days) {
   return `${year}-${month}-${day}`;
 }
 
+// ---- Main Function ----
 async function processData() {
   const filePath = path.join(__dirname, 'data.json');
   const data = await readJSON(filePath);
   if (!data) return;
 
   const today = new Date();
-  // console.log('today: ', today);
   let updated = false;
-
-  const weeklyLastUpdate = new Date(data.weekly_last_update);
-
   const contests = [];
 
+  // Leetcode Weekly Contest
+  const weeklyLastUpdate = new Date(data.weekly_last_update);
   if (getDateDifference(weeklyLastUpdate, today) >= 7) {
-
     contests.push({
       contest_name: `Weekly Contest ${data.leetcode_weekly}`,
       platform: 'Leetcode',
@@ -65,9 +62,9 @@ async function processData() {
     updated = true;
   }
 
+  // Leetcode Biweekly Contest
   const biweeklyLastUpdate = new Date(data.biweekly_last_update);
   if (getDateDifference(biweeklyLastUpdate, today) >= 14) {
-
     contests.push({
       contest_name: `Biweekly Contest ${data.leetcode_biweekly}`,
       platform: 'Leetcode',
@@ -79,53 +76,20 @@ async function processData() {
     data.biweekly_next_contest = addDaysToDate(data.biweekly_next_contest, 14);
     data.biweekly_last_update = today.toISOString().split('T')[0];
     updated = true;
-
   }
 
-  const gfgLastUpdate = new Date(data.gfg_last_update);
-  if (getDateDifference(gfgLastUpdate, today) >= 7) {
-
-    contests.push({
-      contest_name: `GFG Weekly Contest ${data.gfg_weekly}`,
-      platform: 'GeeksForGeeks',
-      contest_date: `${data.gfg_next_contest} 19:00:00`,
-      contest_time: '01:30'
-    });
-
-    data.gfg_weekly += 1;
-    data.gfg_next_contest = addDaysToDate(data.gfg_next_contest, 7);
-    data.gfg_last_update = today.toISOString().split('T')[0];
-    updated = true;
-
-  }
-
-  const codechefLastUpdate = new Date(data.codechef_last_update);
-  if (getDateDifference(codechefLastUpdate, today) >= 7) {
-    contests.push({
-      contest_name: `CodeChef Starter ${data.codechef_starter}`,
-      platform: 'CodeChef',
-      contest_date: `${data.codechef_next_contest} 20:00:00`,
-      contest_time: '02:00'
-    });
-
-    data.codechef_starter += 1;
-    data.codechef_next_contest = addDaysToDate(data.codechef_next_contest, 7);
-    data.codechef_last_update = today.toISOString().split('T')[0];
-    updated = true;
-  }
-
-
-  if ( updated ){
+  // Update DB + JSON if needed
+  if (updated) {
     await insertContestsToDB(contests);
     await writeJSON(filePath, data);
   }
 }
 
+// ---- Insert to DB ----
 async function insertContestsToDB(contests) {
   const con = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    // password: 'your_password',  // Replace with your actual password
     database: 'my_database'
   });
 
@@ -133,22 +97,20 @@ async function insertContestsToDB(contests) {
     if (err) throw err;
     console.log("Connected to MySQL database!");
 
-    const sql = `INSERT ignore INTO contests (contest_name, platform, contest_date, contest_time) 
+    const sql = `INSERT IGNORE INTO contests 
+                 (contest_name, platform, contest_date, contest_time) 
                  VALUES (?, ?, ?, ?)`;
 
     contests.forEach(contest => {
-      con.query(sql, [contest.contest_name, contest.platform, contest.contest_date, contest.contest_time], (err, result) => {
-        if (err) {
-          console.error('Error inserting contest:', err);
-          throw err;
-        }
-        console.log(`Contest inserted/updated: ${contest.contest_name}, ${contest.platform}, ${contest.contest_date}, ${contest.contest_time}`);
+      con.query(sql, [contest.contest_name, contest.platform, contest.contest_date, contest.contest_time], (err) => {
+        if (err) console.error('Error inserting contest:', err);
+        else console.log(`Contest inserted: ${contest.contest_name}`);
       });
     });
+
     con.end();
   });
 }
 
-// Execute the main function
-console.log('Oh yes');
+// ---- Run Script ----
 processData();
